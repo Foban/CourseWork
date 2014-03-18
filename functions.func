@@ -1,0 +1,5 @@
+#begin:another
+$(a,b,c,#):1
+$(d,m,n,#):1
+#1:word
+$(a,c):begin
