@@ -8,9 +8,33 @@ import std.regex;
 import std.file;
 import std.container;
 import std.datetime;
+import core.thread;
+import std.utf;
 
-enum LexemType {_another, _comment, _number, _word, _symbol, _string, _bracket, _bracket_open, _bracket_close, _default};
-string[] TypeName = ["another", "comment", "number", "word", "symbol", "string", "bracket", "bracket_open", "bracket_close", "default"];
+enum LexemType {_another, _comment, _number, _word, _symbol, _string, _bracket, _bracket_open, _bracket_close, _default, _reservedTypes, _keywords, _point};
+string[] TypeName = ["another", "comment", "number", "word", "symbol", "string", "bracket", "bracket_open", "bracket_close", "default", "reservedTypes", "keywords", "point"];
+
+auto keywords = ["abstract", "else", "macro", "switch",
+				"alias", "enum", "mixin", "synchronized",
+				"align", "export", "module", "asm", "extern",
+				"template", "assert", "new", "this", "auto",
+				"false", "nothrow", "throw", "final", "null",
+				"true", "body", "finally", "try", 
+				"out", "typeid", "break", "for" ,"override", "typeof",
+				 "foreach", "function", "package", 
+				"case", "pragma", "cast", "goto", "private",
+				"ulong", "catch", "protected", "union",  "ifIf",
+				"public", "unittest", "class", "immutable", "pure",
+				"continue", "in",  "version", "inout", "ref", 
+				 "return", "debug", "interface",
+				"default", "invariant", "scope", "while", "delegate", "isIs",
+				"with", "deprecated", "static", "do", "struct",
+				"lazy", "super", "const", "import"];
+auto reservedTypes = ["bool", "float","byte","ubyte","uint","char",
+					"ushort","real","void", "dchar", "int", "wchar",
+					"short","long", "double","string","wstring","dstring"];
+					
+					
 
 struct Lexeme
 {
@@ -19,7 +43,7 @@ struct Lexeme
 	LexemType type = LexemType._default;;
 }
 
-struct Function//(T)
+struct Function
 {
 	string arguments;
 	string nextPositionName;
@@ -30,6 +54,36 @@ struct Position
 	Function[] functions;
 	LexemType exitValue = LexemType._default;
 };
+
+bool keywordsTest(string word)
+{
+	foreach(elem; keywords)
+	{
+		if(elem == word)
+			
+			return true;
+	}
+	return false;
+}
+
+bool typesTest(string word)
+{
+	foreach(elem; reservedTypes)
+	{
+		if(elem == word)
+				
+			return true;
+	}
+	return false;
+}
+
+LexemType defineType(string word)
+{
+	if(keywordsTest(word)) return LexemType._keywords;
+	if(typesTest(word)) return LexemType._reservedTypes;
+	return LexemType._word;
+}
+
 
 LexemType getType(string textType)
 {
@@ -60,7 +114,6 @@ Position[string] readFunctions(string fileName)
 				pos.exitValue = getType(wline[1]);
 				positionName = wline[0];
 				positionSet[positionName] = pos;
-				writeln(line,'\t',wline[0], '\t', wline[1], '\t', getType(wline[1]));
 				break;
 			}
 			case '$':
@@ -70,7 +123,6 @@ Position[string] readFunctions(string fileName)
 			
 				func.nextPositionName = wline[1];
 				func.arguments = wline[0];
-				writeln(wline[0]);
 				positionSet[positionName].functions ~= func;
 				break;
 			}
@@ -80,52 +132,53 @@ Position[string] readFunctions(string fileName)
 	return positionSet;
 }
 
-string readData(string fileName)
+/*string readData(string fileName)
 {
 	auto file = File(fileName);
-	string data = strip(file.readln());;
+	string data = strip(file.readln());
 	return data;
-}
+}*/
 
-int main()
+Lexeme[] parse(string data)
 {	
-	//auto data = to!(char[])(readData("test.txt"));
-	//auto data = (readData("parser.d"));
-	//auto data = readText("test.d");
-	//auto data = readText("parser.d");
-	auto data = readText("template.c");
-	//writeln(data);
-	auto b = stdTime();
 	auto positionsSet = readFunctions("functions.func");
 	string positionName = "begin";
 	auto currentPosition = positionsSet[positionName];
+	
 	Lexeme token;
-	/*DList!Lexeme ListOfLexemes;
+	Lexeme[] ListOfLexemes;
 	SList!(Lexeme*) CurlyBracketsStack;
 	SList!(Lexeme*) ParenthesesStack;
-	SList!(Lexeme*) BracesStack;*/
+	SList!(Lexeme*) BracesStack;
 	int i = 0;
-	for(; i < data.length; ++i)
+	int k = 0;
+	int ibegin=0;
+	int m;
+	for(; i < data.length; i+=m, ++k)
 	{
-		if(positionName == "begin")
-			token.begin = i;
+		if(positionName == "begin"){
+			token.begin = k;
+			ibegin = i;
+		}
 		bool flag  = true;  
+		m=std.utf.stride(data,i);
+		
 		foreach(func; currentPosition.functions)
-		{
-			if(!match(to!(string)(data[i]), func.arguments).empty)
+		{	
+			if(!match(data[i..m+i], func.arguments).empty)
 			{
-				positionName = func.nextPositionName;
-				//writeln(currentPosition.exitValue, " ", positionName);
-				
+				positionName = func.nextPositionName;				
 				flag = false;
 				break;
 			}
 		}
 		if(flag && positionName != "begin") //флаг поднят(true) идем по алгоритму сначала, если не поднят(false) продолжаем
 		{
-			--i;
-			token.end = i; 
-			token.type = currentPosition.exitValue;
+			token.end = k; 
+			if(currentPosition.exitValue == LexemType._word)
+				token.type = defineType(data[ibegin..i]);
+			else
+				token.type = currentPosition.exitValue;
 			positionName = "begin";
 			/*switch(positionsSet[positionName].exitValue)
 				{
@@ -177,18 +230,20 @@ int main()
 						break;
 					}
 				}*/
-			ListOfLexemes.stableInsertBack(token);
-			//writeln(token);
+			ListOfLexemes~=token;
+			--i;
+			--k;
 		}
-		
 		currentPosition = positionsSet[positionName];
 	}
 	if(positionName != "begin")
 	{
 		//switch(data[i])
-		--i;
-		token.end = i; 
-		token.type = currentPosition.exitValue;
+		token.end = k; 
+		if(currentPosition.exitValue == LexemType._word)
+				token.type = defineType(data[ibegin..i]);
+			else
+				token.type = currentPosition.exitValue;
 		positionName = "begin";
 		/*switch(positionsSet[positionName].exitValue)
 				{
@@ -240,12 +295,9 @@ int main()
 						break;
 					}
 				}*/
-		ListOfLexemes.stableInsertBack(token);
-		//writeln(token);
+		ListOfLexemes ~= token;
 	}
-	//writeln(ListOfLexemes.front());
-	//writeln(ListOfLexemes.back());
-	b -= stdTime();
-	writeln(b);
-	return 0;
+	/*foreach(elem; ListOfLexemes)
+		writeln(elem);*/
+	return ListOfLexemes;
 }
